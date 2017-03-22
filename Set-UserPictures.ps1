@@ -1,192 +1,254 @@
-### .ps1 
-### PowerShell-Script to resize pictures and import them into Active Directory
-###
-### Version 1.5:
-###  - Update 1.5: Write Status in Scopeland-DB to re-import contacts in Exchange Mailboxes
-###
-### (c) 2014
-###
-### Requirements:  
-###  - SQL Server Permissions
-###  - Quest ActiveRoles AD Management SnapIn
+<# 
+    .SYNOPSIS 
+    This script 
+
+    Thomas Stensitzki 
+
+    THIS CODE IS MADE AVAILABLE AS IS, WITHOUT WARRANTY OF ANY KIND. THE ENTIRE  
+    RISK OF THE USE OR THE RESULTS FROM THE USE OF THIS CODE REMAINS WITH THE USER. 
+
+    Version 1.0, 2017-xx-xx
+
+    Please send ideas, comments and suggestions to support@granikos.eu 
+
+    .LINK 
+    http://scripts.granikos.eu
 
 
+    .DESCRIPTION 
+    The script 
 
+
+    .NOTES 
+    Requirements 
+    - 
+
+    
+    Revision History 
+    -------------------------------------------------------------------------------- 
+    1.0      Initial release 
+
+    This PowerShell script has been developed using ISESteroids - www.powertheshell.com 
+
+
+    .PARAMETER 
+
+    .EXAMPLE
+     
+
+#>
+[CmdletBinding()]
+param(
+  [string]$PictureSource="D:\UserPictures\SOURCE",
+  [string]$TargetPathAD = 'D:\UserPictures\AD',
+  [string]$TargetPathExchange = 'D:\UserPictures\Exchange',
+  [string]$TargetPathIntranet = 'D:\UserPictures\Intranet',
+  [switch]$Exchange,
+  [switch]$Intranet,
+  [switch]$ActiveDirectory,
+  [switch]$SaveUserStatus,
+  [switch]$MoveToProcessedFolder
+)
+
+
+# IMPORT GLOBAL MODULE AND SET INITIAL VARIABLES
+
+# Import-Module GlobalFunctions
+Import-Module BDRFunctions
+
+$ScriptDir = Split-Path -Path $script:MyInvocation.MyCommand.Path
+$ScriptName = $MyInvocation.MyCommand.Name
+$logger = New-Logger -ScriptRoot $ScriptDir -ScriptName $ScriptName -LogFileRetention 14
+$logger.Write('Script started')
+
+$FileFilter = '*.jpg'
+$ImageResizeTool = 'ResizeImage.exe'
+$UserStatusXml = 'UserStatus.xml'
 
 ### BEGIN Variables -----------------------------------------------------------
 
-$logfile = "C:\Scripts\Profilbilder\Logs\$(get-date -format yyyy-MM-dd).log"
-
-$rootpath="\\mcsmdeinet02\Fotos"
-$imagesroot=get-childitem $rootpath *.jpg
-$imageserrorpath="\\mcsmdeinet02\Profilbilder\Fehler"
-
-$imagesproceededad="\\mcsmdeinet02\Profilbilder\AD"
-$adtemppath="C:\Scripts\Profilbilder\AD\TEMP"
-
-$imagesproceededexchange="C:\Scripts\Profilbilder\Exchange"
-$exchangetemppath="\\mcsmdeinet02\Profilbilder\Exchange"
-
-$imagesproceededintranet="C:\Scripts\Profilbilder\Intranet"
-$intranettemppath="\\mcsmdeinet02\Profilbilder\Intranet"
-
-# For update ProfilPicture_ChangeCounter in DB
-$SQLServer = "mcsmdeSQL18"
-$SQLDB = "inhouse"
-$SQLUser = "mcsm\srv-ADPictureImport"
-$SQLPassword = "xxxxx"
-$ConnectionString = "Server=$SQLServer; Uid=$SQLUser; Pwd=$SQLPassword; Database=$SQLDB; Trusted_Connection=True;"
+<# For update ProfilPicture_ChangeCounter in DB
+  For future development
+  $SQLServer = 'mcsmdeSQL18'
+  $SQLDB = 'inhouse'
+  $SQLUser = 'mcsm\srv-ADPictureImport'
+  $SQLPassword = 'xXxXxXxXxXx'
+  $ConnectionString = "Server=$SQLServer; Uid=$SQLUser; Pwd=$SQLPassword; Database=$SQLDB; Trusted_Connection=True;"
+#>
 
 ### END Variables -------------------------------------------------------------
 
+function Set-UserStatus { 
+param(
+  [string]$User = ''
+)
+  if($User -ne '') { 
+    $XmlPath = Join-Path -Path $ScriptDir -ChildPath $UserStatusXml
+    [xml]$xml=[xml](Get-Content -Path $XmlPath)
 
+    $UserNode = $xml.Data.Users.User | Where-Object {$_.Name -eq $User}
+    $TimeStamp = Get-Date -Format s
 
+    if($UserNode -eq $null) {
+      # Append new node
+      $newNode = $xml.CreateElement("User")
+      $newNode.SetAttribute("Name",$User.ToUpper())
+      $newNode.SetAttribute("LastUpdated",$TimeStamp)
+      $xml.SelectSingleNode('/Data/Users').AppendChild($newNode) | Out-Null
+    }
+    else {
+      # Update node
+      $UserNode.LastUpdated = $TimeStamp.ToString()
+    }
 
-
-### BEGIN Functions -----------------------------------------------------------
-
-# Logging
-Function Log
-{
-   Param ([string]$logstring)
-   Add-content $logfile -value $logstring
+    $xml.Save($XmlPath) | Out-Null
+  }
 }
 
-### END Functions -------------------------------------------------------------
+function Convert-ToTargetPicture {
+[CmdletBinding()]
+param(
+  [string]$SourcePath = '',
+  [string]$TargetPath = ''
+)
+  if(($SourcePath -ne '') -and ($TargetPath -ne '')) { 
+    
+    $cmd = Join-Path -Path $TargetPath -ChildPath $ImageResizeTool
+    $logger.Write(('Executing {0} for source {1}' -f $cmd, $SourcePath))
 
+    & $cmd $PictureSource $TargetPath
+  }
+}
 
+function Move-ToProcessedFolder {
+[CmdletBinding()]
+param(
+  [string]$SourcePath = ''
+)
 
+}
+
+function Set-ExchangePhoto { 
+[CmdletBinding()]
+param(
+  [string]$SourcePath = ''
+)
+  if($SourcePath -ne '') {
+
+    $ExchangePictures = Get-ChildItem -Path $SourcePath -Filter $FileFilter
+
+    if(($ExchangePictures | Measure-Object).Count -gt 0) {
+    
+      foreach ($file in $ExchangePictures) {
+        $user = $null
+        try{
+
+          $user = Get-ADUser -Identity $file.BaseName 
+
+        }
+        catch{}
+
+        if($user -ne $null) { 
+
+          $Photo = ([System.IO.File]::ReadAllBytes($file.FullName))
+
+          $logger.Write(('Set EXCH UserPhoto for {0}' -f $file.BaseName))
+
+          Set-UserPhoto -Identity $file.BaseName -PictureData $Photo -Confirm:$false -ErrorAction SilentlyContinue | Out-Null
+
+        }
+        else {
+          $logger.Write(('No AD user found for {0}' -f $file.BaseName))
+        }
+      }    
+
+    }
+    else {
+      $logger.Write("Exchange path $($SourcePath) is empty!")
+    }
+  }
+}
+
+function Set-ActiveDirectoryThumbnail {
+[CmdletBinding()]
+param(
+  [string]$SourcePath = ''
+)
+  if($SourcePath -ne '') { 
+    $AdPictures = Get-ChildItem -Path $SourcePath -Filter $FileFilter
+
+    if(($AdPictures | Measure-Object).Count -gt 0) {
+
+      foreach ($file in $AdPictures) {
+        $user = $null
+        try{
+
+          $user = Get-ADUser -Identity $file.BaseName 
+
+        }
+        catch{}
+
+        if($user -ne $null) { 
+
+          if($file.length -lt 10KB) {
+            # file size is less then 10KB
+            $Photo = ([System.IO.File]::ReadAllBytes($file.FullName))
+            $logger.Write(('Set thumbnailPhoto for {0}' -f $file.BaseName))
+
+            # Set-ADUser -Identity $file.BaseName -Replace @{thumbnailPhoto=$Photo}
+
+            if($SaveUserStatus) { 
+              Set-UserStatus -User $file.BaseName
+            }
+          }
+          else {
+            $logger.Write("File size for $($file.BaseName) is too large!")
+          }
+        }
+        else {
+          $logger.Write(('No AD user found for {0}' -f $file.BaseName))
+        }
+      }
+    }
+    else {
+      $logger.Write("AD path $($SourcePath) is empty!")
+    }
+  }
+}
 
 
 ### BEGIN Main ----------------------------------------------------------------
 
-# START (only if JPG exists in $rootpath)
-if (Test-Path $rootpath\*.jpg)
-{ 
-  Write-Host " "
-  Log " "
-  Write-Host "New pictures found...              "
-  Log "$(get-date -format hh:mm:ss) New pictures found..."
-  Write-Host "============================================"
-  Write-Host $imagesroot
-  Log "$(get-date -format hh:mm:ss) $imagesroot"
-  Write-Host " "
-    
+if(Test-Path -Path (Join-Path -Path $PictureSource -ChildPath $FileFilter) ) {
 
+  # Fetch file information
+  $Pictures = Get-ChildItem -Path $PictureSource -Filter $FileFilter
   
-# Copy and convert images
-  Write-Host " "
-  Write-Host "Starting to convert images...      "
-  Write-Host "============================================"
-  
-  Write-Host "Converting to Intranet Format (150 x 150)"
-  Log "$(get-date -format hh:mm:ss) Converting to Intranet Format (150 x 150)"
-  C:\Scripts\Profilbilder\Intranet\TEMP\icr.exe $rootpath $intranettemppath
-  Write-Host " "
-	
-  Write-Host "Converting to AD Format (96 x 96)"
-  Log "$(get-date -format hh:mm:ss) Converting to AD Format (96 x 96)"
-  C:\Scripts\Profilbilder\AD\TEMP\icr.exe $rootpath $adtemppath
-  Write-Host " "
-	
-  Write-Host "Converting to Exchange Format (648 x 648)"
-  Log "$(get-date -format hh:mm:ss) Converting to Exchange Format (648 x 648)"
-  C:\Scripts\Profilbilder\Exchange\TEMP\icr.exe $rootpath $exchangetemppath
-  Write-Host " "
-   
-  
+  $logger.Write(('Found {0} file(s)' -f ($Pictures | Measure-Object).Count))
 
-# Active Directory: Replace thumbnailPhoto in user objects with pictures from specific path
-# Filenames = sAMAccountName
-  $imagesactivedirectorytemp=get-childitem $adtemppath *.jpg
-  Write-Host " "
-  Write-Host "Starting Active Directory Import..."
-  Log "$(get-date -format hh:mm:ss) Starting Active Directory Import..."
-  Write-Host "============================================"
-  # For every file in $imagesactivedirectorytemp
-  foreach ($file in $imagesactivedirectorytemp) {
-	$photo = [byte[]](Get-Content $file.FullName -Encoding byte)
-	Write-Host "Importing thumbnailPhoto for User:" $file.BaseName
-	Log "$(get-date -format hh:mm:ss) Importing thumbnailPhoto for User: $file"
-	# Check if file is > 10 KB
-	if ($file.length -gt 10KB)
-	{
-        Write-Host "File $file exceeds size of 10 KB, moving file to $imageserrorpath"
-		Log "$(get-date -format hh:mm:ss) File $file exceeds size of 10 KB, moving file to $imageserrorpath"
-		Move-Item $adtemppath\$file $imageserrorpath -force
-		C:\Scripts\Profilbilder\Scripts\blat.exe EmailcontentFileSize.txt -t Profilbilder@mcsm.de -s $file -server relay.mcsm.de -f Bildimportskript@mcsm.de
-    }
+  if($Exchange) {
+    # Convert images for Exchange and push to Exchange
+    Convert-ToTargetPicture -SourcePath $PictureSource -TargetPath $TargetPathExchange  
 
-	else
-	{
-		# Check if user is in Active Directory, import and move file
-		# add-pssnapin quest.activeroles.admanagement
-		if ( (Get-PSSnapin -Name Quest.Activeroles.ADManagement -ErrorAction SilentlyContinue) -eq $null )
-		{
-			Add-PsSnapin Quest.Activeroles.ADManagement -ErrorAction SilentlyContinue
-			
-			if ( (Get-PSSnapin -Name Quest.Activeroles.ADManagement -ErrorAction SilentlyContinue) -eq $null )
-			{
-				Write-Host "Quest.Activeroles.ADManagement could NOT be loaded!" -ForegroundColor Red
-				Write-Host "Verify that the Quest AD Management is installed on this computer!" -ForegroundColor Red
-			}
-		}
-		# $user = Get-ADUser $file.BaseName | select SamAccountName
-		$user = Get-QADUser $file.BaseName | select SamAccountName
+    Set-ExchangePhoto -SourcePath $TargetPathExchange
+  }
+  elseif($Intranet) {
+    # Convert images for Intranet, convert only
+    Convert-ToTargetPicture -SourcePath $PictureSource -TargetPath $TargetPathIntranet
+  }
+  elseif($ActiveDirectory) {
+    # Convert images for Active Directory thumbnail
+    Convert-ToTargetPicture -SourcePath $PictureSource -TargetPath $TargetPathAD
 
-		if ($user.SamAccountName -eq $file.Basename) 
-		{
-			#Set-ADUser $file.BaseName -Replace @{thumbnailPhoto=$photo}
-			Set-QADUser $file.BaseName -ObjectAttributes @{thumbnailPhoto=$photo}
-			Write-Host "Moving imported picture $file to" $imagesproceededad
-			Log "$(get-date -format hh:mm:ss) Moving imported picture $file to $imagesproceededad"
-			Move-Item $adtemppath\$file $imagesproceededad -force
-			# Clean-Up Rootpath
-			Write-Host "Removing from rootpath:" $file
-			Log "$(get-date -format hh:mm:ss) Removing from rootpath: $file"
-			Remove-Item $rootpath\$file
-            
-            # Update ProfilPicture_ChangeCounter in DB
-            Write-Host
-            Write-Host "Updating ProfilePicture_ChangeCounter in DB."
-            Log "$(get-date -format hh:mm:ss) Updating ProfilePicture_ChangeCounter in DB."
-            $Connection = New-Object System.Data.SqlClient.SqlConnection
-            $Connection.ConnectionString = $ConnectionString
-            $Connection.Open()
-            $SQLCmd = New-Object System.Data.SQLClient.SQLCommand
-            $TargetUser = $file.BaseName.ToLower()
-            $SQLQuery = "UPDATE [inhouse].[dbo].[VIEW_OutlookSync_Mitarbeiter_Update] SET Profilepicture_Changecounter = Profilepicture_Changecounter + 1 WHERE lower(Username) = '$TargetUser'"
-            $SQLCmd.CommandText = $SQLQuery
-            $SQLCmd.Connection = $Connection
-            $Result = $SQLCmd.ExecuteNonQuery()
-            $Connection.Close()
-		}
-
-		else 
-        {
-			Write-Host "User for $file does not exist in AD, moving file to $imageserrorpath"
-			Log "$(get-date -format hh:mm:ss) User for $file does not exist in AD, moving file to $imageserrorpath"
-			Move-Item $rootpath\$file $imageserrorpath -force
-			Remove-Item $adtemppath\$file
-			#C:\Scripts\Profilbilder\Scripts\blat.exe EmailcontentADuser.txt -t Profilbilder@mcsm.de -s $file -server relay.mcsm.de -f Bildimportskript@mcsm.de
-			C:\Scripts\Profilbilder\Scripts\blat.exe EmailcontentADuser.txt -t Profilbilder@mcsm.de -s $file -server smtp.mcsm.de -f alert-ADPictureImport@mcsm.de -u srv-smtp-ADPictureImport@mcsm.de -pw fPFsKBDSz9dr2W8w67qk
-		} 
-
-	}
+    Set-ActiveDirectoryThumbnail -SourcePath $TargetPathAD 
 
   }
-  
-    
-# END of global if
+}
+else {
+  # Ooops, source directory seems to be empty
+  $logger.Write('Pictures source directory is empty!')
 }
 
 
-else
-{
-    Write-Host " "
-    Write-Host "No new pictures found in" $rootpath
-    Log "$(get-date -format hh:mm:ss) No new pictures found in $rootpath"
-    Write-Host " "
-}
-
+$logger.Write('Script finished')
 ### END Main ------------------------------------------------------------------
