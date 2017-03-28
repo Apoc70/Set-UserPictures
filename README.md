@@ -73,6 +73,16 @@ Resize photos stored in the default PictureSource folder for Exchange (648x648) 
 ```
 Resize photos stored on a SRV01 share for Exchange and save resized photos on a SRV02 share
 
+```
+.\Set-UserPictures.ps1 -ActiveDirectory
+```
+Resize photos stored in the default PictureSource folder for Active Directory (96x96) and write images to user thumbnailPhoto attribute
+
+```
+.\Set-UserPictures.ps1 -Intranet
+```
+Resize photos stored in the default PictureSource folder for Intranet (150x150)
+
 ## Note
 THIS CODE IS MADE AVAILABLE AS IS, WITHOUT WARRANTY OF ANY KIND. THE ENTIRE  
 RISK OF THE USE OR THE RESULTS FROM THE USE OF THIS CODE REMAINS WITH THE USER.
