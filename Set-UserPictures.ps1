@@ -76,7 +76,7 @@
 
     .PARAMETER MoveAction
     Optional action to move processed images to a dedicated sub folder.
-    Possible value:
+    Possible values:
     MoveTargetToProcessed = Move Exchange, AD or Intranet pictures to a subfolder
     MoveSourceToProcessed = Move image source to a subfolder
 

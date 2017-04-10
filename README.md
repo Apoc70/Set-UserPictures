@@ -95,7 +95,7 @@ Find the script at TechNet Gallery
 ## Credits
 Written by: Thomas Stensitzki
 
-Stay connected:
+# Social
 
 * My Blog: http://justcantgetenough.granikos.eu
 * Twitter: https://twitter.com/stensitzki
