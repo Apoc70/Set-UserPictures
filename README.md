@@ -38,9 +38,16 @@ Absolute path to store images resized for Exchange
 ### TargetPathIntranet
 Absolute path to store images resized for Intranet
 
-### Exchange
-Switch to create resized images for Exchange and store images in users mailbox
+### ExchangeOnPrem
+Switch to create resized images for Exchange On-Premesis and store images in users mailbox
 Requires the image tool to be available in TargetPathExchange
+
+### ExchangeOnline
+Switch to create resized images for Exchange Online and store images in users mailbox
+Requires the image tool to be available in TargetPathExchange
+
+### ExchangeOnPremisesFqdn
+Name the on-premises Exchange Server Fqdn to connect to using remote PowerShell
 
 ### ActiveDirectory
 Switch to create resized images for Active Directory and store images in users thumbnailPhoto attribute
@@ -64,14 +71,14 @@ Possible values:
 
 ## Examples
 ```
-.\Set-UserPictures.ps1 -Exchange 
+.\Set-UserPictures.ps1 -ExchangeOnPrem
 ```
 Resize photos stored in the default PictureSource folder for Exchange (648x648) and write images to user mailboxes
 
 ```
-.\Set-UserPictures.ps1 -Exchange -PictureSource '\\SRV01\HRShare\Photos' -TargetPathExchange '\\SRV02\ExScripts\Photos'
+.\Set-UserPictures.ps1 -ExchangeOnline -PictureSource '\\SRV01\HRShare\Photos' -TargetPathExchange '\\SRV02\ExScripts\Photos'
 ```
-Resize photos stored on a SRV01 share for Exchange and save resized photos on a SRV02 share
+Resize photos stored on a SRV01 share for Exchange Online and save resized photos on a SRV02 share
 
 ```
 .\Set-UserPictures.ps1 -ActiveDirectory

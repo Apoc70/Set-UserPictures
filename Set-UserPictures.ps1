@@ -33,7 +33,7 @@
     .NOTES 
     Requirements 
     - GlobalFunctions PowerShell module, described here: http://scripts.granikos.eu 
-    - ResizeImage.exe executable, described here: 
+    - ResizeImage.exe executable, described here: https://www.granikos.eu/en/justcantgetenough/PostId/307/add-resized-user-photos-automatically 
     - Exchange Server 2013+ Management Shell (EMS) for storing user photos in on-premises mailboxes
     - Exchange Online Management Shell for storing user photos in cloud mailboxes 
     - Write access to thumbnailPhoto attribute in Active Directory 
@@ -42,6 +42,7 @@
     Revision History 
     -------------------------------------------------------------------------------- 
     1.0      Initial release 
+    1.1      Exchange Online support added
 
     This PowerShell script has been developed using ISESteroids - www.powertheshell.com 
 
@@ -59,9 +60,16 @@
     .PARAMETER TargetPathIntranet
     Absolute path to store images resized for Intranet
 
-    .PARAMETER Exchange
-    Switch to create resized images for Exchange and store images in users mailbox
+    .PARAMETER ExchangeOnPrem
+    Switch to create resized images for Exchange On-Premesis and store images in users mailbox
     Requires the image tool to be available in TargetPathExchange
+
+    .PARAMETER ExchangeOnline
+    Switch to create resized images for Exchange Online and store images in users mailbox
+    Requires the image tool to be available in TargetPathExchange
+
+    .PARAMETER ExchangeOnPremisesFqdn
+    Name the on-premises Exchange Server Fqdn to connect to using remote PowerShell
 
     .PARAMETER ActiveDirectory
     Switch to create resized images for Active Directory and store images in users thumbnailPhoto attribute
@@ -82,11 +90,11 @@
 
     .EXAMPLE
     Resize photos stored in the default PictureSource folder for Exchange (648x648) and write images to user mailboxes
-    .\Set-UserPictures.ps1 -Exchange   
+    .\Set-UserPictures.ps1 -ExchangeOnPrem  
 
     .EXAMPLE
     Resize photos stored on a SRV01 share for Exchange and save resized photos on a SRV02 share
-    .\Set-UserPictures.ps1 -Exchange -PictureSource '\\SRV01\HRShare\Photos' -TargetPathExchange '\\SRV02\ExScripts\Photos'
+    .\Set-UserPictures.ps1 -ExchangeOnline -PictureSource '\\SRV01\HRShare\Photos' -TargetPathExchange '\\SRV02\ExScripts\Photos'
 
     .EXAMPLE
     Resize photos stored in the default PictureSource folder for Active Directory (96x96) and write images to user thumbnailPhoto attribute
@@ -98,11 +106,13 @@
 #>
 [CmdletBinding()]
 param(
-  [string]$PictureSource='D:\UserPhotos\SOURCE',
-  [string]$TargetPathAD = 'D:\UserPhotos\AD',
-  [string]$TargetPathExchange = 'D:\UserPhotos\Exchange',
-  [string]$TargetPathIntranet = 'D:\UserPhotos\Intranet',
-  [switch]$Exchange,
+  [string]$PictureSource='C:\scripts\Set-OnlineUserPhoto\SOURCE',
+  [string]$TargetPathAD = 'C:\scripts\Set-OnlineUserPhoto\AD',
+  [string]$TargetPathExchange = 'C:\scripts\Set-OnlineUserPhoto\Exchange',
+  [string]$TargetPathIntranet = 'C:\scripts\Set-OnlineUserPhoto\Intranet',
+  [string]$ExchangeOnPremisesFqdn = 'myexchange.mcsmemails.de',
+  [switch]$ExchangeOnPrem,
+  [switch]$ExchangeOnline,
   [switch]$Intranet,
   [switch]$ActiveDirectory,
   [switch]$SaveUserStatus,
@@ -231,6 +241,23 @@ function Set-ExchangePhoto {
   )
   if($SourcePath -ne '') {
 
+    if($ExchangeOnline) {
+      #Connect to Exchange Online Powershell
+      $credential = Get-Credential -Message 'Please enter Exchange Online Credentials' # -UserName "MyUser@TENANT.onmicrosoft.com"
+      
+      $exchangeSession = New-PSSession -ConfigurationName Microsoft.Exchange -ConnectionUri 'https://outlook.office365.com/powershell-liveid/?proxymethod=rps' -Credential $credential -Authentication 'Basic' -AllowRedirection
+      
+      Import-PSSession $exchangeSession -DisableNameChecking
+    }
+    if($ExchangeOnPrem) {
+      # Connect local Exchange Management Shell
+      $credential = Get-Credential -Message 'Please enter Exchange on-premises credentials' -UserName 'domain\Username'
+      
+      $exchangeSession = New-PSSession -ConfigurationName Microsoft.Exchange -ConnectionUri "http://$($ExchangeOnPremisesFqdn)/PowerShell/" -Authentication Kerberos -Credential $credential
+      
+      Import-PSSession $exchangeSession
+    }
+
     # fetch all files from Exchange directory
     $ExchangePictures = Get-ChildItem -Path $SourcePath -Filter $FileFilter
 
@@ -250,7 +277,7 @@ function Set-ExchangePhoto {
 
           $logger.Write(('Set EXCH UserPhoto for {0}' -f $file.BaseName))
 
-          Set-UserPhoto -Identity $user.UserPrincipalName -PictureData $Photo -Confirm:$false -ErrorAction SilentlyContinue | Out-Null
+          Set-UserPhoto -Identity $user.UserPrincipalName -PictureData $Photo -Confirm:$false #-ErrorAction SilentlyContinue | Out-Null
 
           if($MoveToProcessedFolder) {
             Move-ToProcessedFolder -SourcePath $SourcePath -Filename $file.Name
@@ -267,6 +294,7 @@ function Set-ExchangePhoto {
       $logger.Write(('Exchange path {0} is empty!' -f $SourcePath))
     }
   }
+  Remove-PSSession $exchangeSession
 }
 
 function Set-ActiveDirectoryThumbnail {
@@ -295,7 +323,7 @@ function Set-ActiveDirectoryThumbnail {
             $Photo = ([System.IO.File]::ReadAllBytes($file.FullName))
             $logger.Write(('Set thumbnailPhoto for {0}' -f $file.BaseName))
 
-            # Set-ADUser -Identity $file.BaseName -Replace @{thumbnailPhoto=$Photo}
+            Set-ADUser -Identity $file.BaseName -Replace @{thumbnailPhoto=$Photo}
 
             if($MoveToProcessedFolder) {
               Move-ToProcessedFolder -SourcePath $SourcePath -Filename $file.Name
@@ -341,7 +369,7 @@ if(Test-Path -Path (Join-Path -Path $PictureSource -ChildPath $FileFilter) ) {
   $Pictures = Get-ChildItem -Path $PictureSource -Filter $FileFilter
   $logger.Write(('Found {0} file(s)' -f ($Pictures | Measure-Object).Count))
 
-  if($Exchange) {
+  if($ExchangeOnPrem -or $ExchangeOnline) {
     # Convert images for Exchange and push to Exchange
     Convert-ToTargetPicture -SourcePath $PictureSource -TargetPath $TargetPathExchange  
 
@@ -352,6 +380,9 @@ if(Test-Path -Path (Join-Path -Path $PictureSource -ChildPath $FileFilter) ) {
     Convert-ToTargetPicture -SourcePath $PictureSource -TargetPath $TargetPathIntranet
   }
   elseif($ActiveDirectory) {
+    # Import Active Directory Module
+    Import-Module ActiveDirectory
+
     # Convert images for Active Directory thumbnail
     Convert-ToTargetPicture -SourcePath $PictureSource -TargetPath $TargetPathAD
 
