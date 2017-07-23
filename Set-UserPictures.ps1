@@ -93,7 +93,7 @@
     .\Set-UserPictures.ps1 -ExchangeOnPrem  
 
     .EXAMPLE
-    Resize photos stored on a SRV01 share for Exchange and save resized photos on a SRV02 share
+    Resize photos stored on a SRV01 share for Exchange Online and save resized photos on a SRV02 share
     .\Set-UserPictures.ps1 -ExchangeOnline -PictureSource '\\SRV01\HRShare\Photos' -TargetPathExchange '\\SRV02\ExScripts\Photos'
 
     .EXAMPLE
@@ -106,10 +106,10 @@
 #>
 [CmdletBinding()]
 param(
-  [string]$PictureSource='C:\scripts\Set-OnlineUserPhoto\SOURCE',
-  [string]$TargetPathAD = 'C:\scripts\Set-OnlineUserPhoto\AD',
-  [string]$TargetPathExchange = 'C:\scripts\Set-OnlineUserPhoto\Exchange',
-  [string]$TargetPathIntranet = 'C:\scripts\Set-OnlineUserPhoto\Intranet',
+  [string]$PictureSource='D:\UserPhoto\SOURCE',
+  [string]$TargetPathAD = 'D:\UserPhoto\AD',
+  [string]$TargetPathExchange = 'D:\UserPhoto\Exchange',
+  [string]$TargetPathIntranet = 'D:\UserPhoto\Intranet',
   [string]$ExchangeOnPremisesFqdn = 'myexchange.mcsmemails.de',
   [switch]$ExchangeOnPrem,
   [switch]$ExchangeOnline,
