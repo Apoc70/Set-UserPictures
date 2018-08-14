@@ -8,7 +8,7 @@
     THIS CODE IS MADE AVAILABLE AS IS, WITHOUT WARRANTY OF ANY KIND. THE ENTIRE  
     RISK OF THE USE OR THE RESULTS FROM THE USE OF THIS CODE REMAINS WITH THE USER. 
 
-    Version 1.0, 2017-03-23
+    Version 1.2, 2018-08-14
 
     Please send ideas, comments and suggestions to support@granikos.eu 
 
@@ -43,6 +43,7 @@
     -------------------------------------------------------------------------------- 
     1.0      Initial release 
     1.1      Exchange Online support added
+    1.2      Log strings updated when updating Exchange photos
 
     This PowerShell script has been developed using ISESteroids - www.powertheshell.com 
 
@@ -234,26 +235,58 @@ function Move-ToProcessedFolder {
   }
 }
 
+function Move-ToProcessedFolder {
+  [CmdletBinding()]
+  param(
+    [string]$SourcePath = '',
+    [string]$Filename =''
+  )
+  $ProcessedPath = Join-Path -Path $SourcePath -ChildPath $ProcessedFolderName
+  if(!(Test-Path -Path $ProcessedPath)) { 
+    # Create processed target folder first
+    $null = New-Item -Path $ProcessedPath -ItemType Directory
+    $logger.Write(('Directory created: {0}' -f ($ProcessedPath)))
+  }
+
+  # if SourcePath AND Filename are set, move a single file
+  if(($SourcePath -ne '') -and ($Filename -ne '')){
+    # move file to processed folder
+    if(Test-Path -Path (Join-Path -Path $ProcessedPath -ChildPath $Filename)) {
+      Remove-Item -Path (Join-Path -Path $ProcessedPath -ChildPath $Filename) -Confirm:$false -Force
+    }
+    $null = Move-Item -Path (Join-Path -Path $SourcePath -ChildPath $Filename) -Destination (Join-Path -Path $ProcessedPath -ChildPath $Filename) -Force 
+    $logger.Write((' Moved {0} from {1} to {2}' -f $Filename, $SourcePath, $ProcessedPath))
+  }
+  elseif($SourcePath -ne '') {
+    # Move full directory to processed folder
+    if(Test-Path -Path (Join-Path -Path $ProcessedPath -ChildPath $Filename)) {
+      Remove-Item -Path (Join-Path -Path $ProcessedPath -ChildPath $Filename) -Confirm:$false -Force
+    }
+    $null = Move-Item -Path (Join-Path -Path $SourcePath -ChildPath '*') -Destination (Join-Path -Path $ProcessedPath -ChildPath '*') -Force
+    $logger.Write((' Moved all files from {0} to {1}' -f $SourcePath, $ProcessedPath))
+  }
+}
+
 function Set-ExchangePhoto { 
   [CmdletBinding()]
   param(
-    [string]$SourcePath = ''
+    [string]$SourcePath = '',
+    [Management.Automation.PSCredential] $ExchangeCredentials
   )
   if($SourcePath -ne '') {
 
     if($ExchangeOnline) {
       #Connect to Exchange Online Powershell
-      $credential = Get-Credential -Message 'Please enter Exchange Online Credentials' # -UserName "MyUser@TENANT.onmicrosoft.com"
       
-      $exchangeSession = New-PSSession -ConfigurationName Microsoft.Exchange -ConnectionUri 'https://outlook.office365.com/powershell-liveid/?proxymethod=rps' -Credential $credential -Authentication 'Basic' -AllowRedirection
+      $exchangeSession = New-PSSession -ConfigurationName Microsoft.Exchange -ConnectionUri 'https://outlook.office365.com/powershell-liveid/?proxymethod=rps' -Credential $ExchangeCredentials -Authentication 'Basic' -AllowRedirection
       
-      Import-PSSession $exchangeSession -DisableNameChecking
+      $exchangeSession = Import-PSSession $exchangeSession -DisableNameChecking
+
     }
     if($ExchangeOnPrem) {
       # Connect local Exchange Management Shell
-      $credential = Get-Credential -Message 'Please enter Exchange on-premises credentials' -UserName 'domain\Username'
       
-      $exchangeSession = New-PSSession -ConfigurationName Microsoft.Exchange -ConnectionUri "http://$($ExchangeOnPremisesFqdn)/PowerShell/" -Authentication Kerberos -Credential $credential
+      $exchangeSession = New-PSSession -ConfigurationName Microsoft.Exchange -ConnectionUri "http://$($ExchangeOnPremisesFqdn)/PowerShell/" -Authentication Kerberos -Credential $ExchangeCredentials
       
       Import-PSSession $exchangeSession
     }
@@ -267,34 +300,44 @@ function Set-ExchangePhoto {
         $user = $null
 
         try{
-          $user = Get-ADUser -Identity $file.BaseName 
+          $user = Get-ADUser -Identity $file.BaseName
+          $OnlineMailbox = Get-CASMailbox -Identity $user.UserPrincipalName -ErrorAction SilentlyContinue 
         }
-        catch{}
+        catch{
+          $logger.Write(('Some error for user {0}' -f $file.BaseName), 2)
+        }
 
-        if($user -ne $null) { 
+        if($OnlineMailbox -ne $null) { 
 
           $Photo = ([System.IO.File]::ReadAllBytes($file.FullName))
 
-          $logger.Write(('Set EXCH UserPhoto for {0}' -f $file.BaseName))
+          $logger.Write(('Set EXCHANGE UserPhoto SamAccountName [{0}] for target UPN [{1}]' -f $file.BaseName, $user.UserPrincipalName))
 
-          Set-UserPhoto -Identity $user.UserPrincipalName -PictureData $Photo -Confirm:$false #-ErrorAction SilentlyContinue | Out-Null
+          $null = Set-UserPhoto -Identity $user.UserPrincipalName -PictureData $Photo -Confirm:$false #-ErrorAction SilentlyContinue | Out-Null
 
           if($MoveToProcessedFolder) {
+            #Move photo to processed folder
             Move-ToProcessedFolder -SourcePath $SourcePath -Filename $file.Name
           }
-
+          else{
+            #Delete resized/created photo in target path
+            $FileUNC = Join-Path -Path $SourcePath -ChildPath $file.Name
+            Remove-Item $FileUNC
+            $logger.Write(('Removed resized picture {0} from {1}' -f $file.Name, $SourcePath))
+          }
         }
         else {
-          $logger.Write(('No AD user found for {0}' -f $file.BaseName), 2)
+          $logger.Write(('No Exchange Mailbox found for user [{0}] with UPN [{1}]' -f $file.BaseName, $user.UserPrincipalName), 2)
         }
       }    
     }
     else {
       # Source path is empty
-      $logger.Write(('Exchange path {0} is empty!' -f $SourcePath))
+      $logger.Write(('Exchange UserPhoto path {0} is empty!' -f $SourcePath))
     }
   }
-  Remove-PSSession $exchangeSession
+  
+  Remove-PSSession $exchangeSession -ErrorAction SilentlyContinue
 }
 
 function Set-ActiveDirectoryThumbnail {
