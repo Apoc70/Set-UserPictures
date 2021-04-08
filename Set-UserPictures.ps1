@@ -122,14 +122,14 @@ param(
 )
 
 
-# IMPORT GLOBAL MODULE AND SET INITIAL VARIABLES
-try { 
+# Import GlobalFunctions
+if($null -ne (Get-Module -Name GlobalFunctions -ListAvailable).Version) {
   Import-Module -Name GlobalFunctions
 }
-catch {
-  # Loading GlobalFUnction module failed. 
-  Write-Warning -Message 'GlobalFunctions module could not be loaded!'
-  Write-Warning -Message 'Please see: http://scripts.granikos.eu'
+else {
+  Write-Warning -Message 'Unable to load GlobalFunctions PowerShell module.'
+  Write-Warning -Message 'Open an administrative PowerShell session and run Import-Module GlobalFunctions'
+  Write-Warning -Message 'Please check http://bit.ly/GlobalFunctions for further instructions'
   exit 99
 }
 
