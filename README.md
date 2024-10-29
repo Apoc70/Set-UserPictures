@@ -2,6 +2,10 @@
 
 This script fetches images from a source folder, resizes images for use with Exchange, Active Directory and Intranet. Resized images are are written to Exchange and Active Directory.
 
+## Note
+
+This repository is archived. You can find the most recent version [here]().
+
 ## Description
 
 The script parses all images provided in a dedicated source folder. The images are resized and cropped for use with the following targets:
@@ -10,7 +14,7 @@ The script parses all images provided in a dedicated source folder. The images a
 * Active Directory thumbnailPhoto attribute
 * Local intranet use in your local infrastructure
 
-Source images must be named using the respective user logon name. 
+Source images must be named using the respective user logon name.
 
 Example: MYDOMAIN\JohnDoe --> JohnDoe.jpg
 
@@ -110,7 +114,7 @@ Resize photos stored in the default PictureSource folder for Intranet (150x150)
 
 ## Note
 
-THIS CODE IS MADE AVAILABLE AS IS, WITHOUT WARRANTY OF ANY KIND. THE ENTIRE  
+THIS CODE IS MADE AVAILABLE AS IS, WITHOUT WARRANTY OF ANY KIND. THE ENTIRE
 RISK OF THE USE OR THE RESULTS FROM THE USE OF THIS CODE REMAINS WITH THE USER.
 
 ## Credits
